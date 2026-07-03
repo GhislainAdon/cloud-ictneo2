@@ -1,0 +1,15 @@
+# Node / Angular
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+
+# Go
+backend/launcher
+backend/*.exe
+
+# Runtime / local state — never commit configs or keys
+*.key
+age.key
+config.local.yaml
+
+.DS_Store

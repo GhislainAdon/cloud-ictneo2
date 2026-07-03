@@ -1,0 +1,11 @@
+services:
+  launcher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cloud-ictneo2:local
+    container_name: cloud-ictneo2
+    ports:
+      # Localhost only. There is no auth — never expose without a proxy.
+      - "127.0.0.1:9876:9876"
+    restart: unless-stopped
