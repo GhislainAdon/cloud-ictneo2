@@ -1,0 +1,44 @@
+# Example launcher config. The `secrets:` values below are PLACEHOLDERS
+# (plaintext) — encrypt them in the UI (Applications ▸ Secrets) with your
+# age key, or run examples/gen-demo.sh to produce a real encrypted file.
+platform:
+  name: "Mon Datacenter"
+
+nodes:
+  - name: node-mgr-01
+    host: 10.0.0.5
+    port: 22
+    user: admin
+    auth: { type: key, secretRef: ssh_key_nm01 }
+
+applications:
+  - name: terraform-apply-core
+    node: node-mgr-01
+    workdir: /opt/infra
+    command: "terraform apply -auto-approve"
+    fields:
+      - { env: TF_VAR_password, label: "Mot de passe DB", type: secret, secretRef: tf_pass }
+      - { env: TF_VAR_region, label: "Région", type: text, default: eu-west-1 }
+    check:
+      enabled: true
+      type: command
+      run: "test -f /opt/infra/terraform.tfstate && echo present"
+      periodSeconds: 60
+    enabled: true
+
+  - name: ansible-site
+    node: node-mgr-01
+    workdir: /opt/ansible
+    command: "ansible-playbook site.yml"
+    fields:
+      - { env: ANSIBLE_VAULT_PASSWORD, label: "Vault password", type: secret, secretRef: vault_pass }
+    check:
+      enabled: true
+      type: tcp
+      periodSeconds: 30
+    enabled: true
+
+secrets:
+  ssh_key_nm01: "PLACEHOLDER-replace-with-encrypted-value"
+  tf_pass: "PLACEHOLDER-replace-with-encrypted-value"
+  vault_pass: "PLACEHOLDER-replace-with-encrypted-value"
