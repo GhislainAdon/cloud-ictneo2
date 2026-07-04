@@ -1,0 +1,36 @@
+# DEMO encrypted config — secrets below are age-armored ciphertext (safe to
+# read). Load this together with the key printed by examples/encrypt-demo.sh.
+platform:
+  name: "Mon Datacenter"
+nodes:
+  - name: node-01
+    host: 10.0.0.5
+    user: admin
+    auth: { type: key, secretRef: ssh_key }
+applications:
+  - name: terraform-apply
+    node: node-01
+    workdir: /opt/infra
+    command: "terraform apply -auto-approve"
+    fields:
+      - { env: TF_VAR_password, label: "Mot de passe", type: secret, secretRef: tf_pass }
+      - { env: TF_VAR_region,   label: "Région",       type: text,   default: eu-west-1 }
+    check: { enabled: true, type: tcp, periodSeconds: 30 }
+    enabled: true
+secrets:
+  ssh_key: |
+    -----BEGIN AGE ENCRYPTED FILE-----
+    YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBLZS8reFR0Mk4zdHRFRCtK
+    S25vVXRRZnJoUUl2R240aHg3QllHd0ovZjFBCjN4VVc0Y01RRGhnc01Xa2NPMWJt
+    amxtaTZGaHN3SFZwcFcxRi9sL3lNTXMKLS0tIEFudTQ4YUYwaFFjZ0ZUMS9QZzJH
+    cXFuWXFsK3hQZy82MFRKRlk5QytHaGsKO+aVFYEfrqKoRRxa7+eVqLkwv/cahEuH
+    0ij+derU88Li4syibyDcGjIxa8rh7rub/ID2dtuHmIUU1wlCjA==
+    -----END AGE ENCRYPTED FILE-----
+  tf_pass: |
+    -----BEGIN AGE ENCRYPTED FILE-----
+    YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBkc0ZIbGpEbHoxSXdxZTdt
+    ekpLQnVYall6bWlIOEpOdHVTY0FKMVFLdkZ3ClNUdUM2UDhwNmVnYTFWWmZaSDli
+    d1lLK05QZUNRc1gva2trQ1BPNzk0WWMKLS0tIFlRM0p6Um1uOTJZQm03a2xoMWQ1
+    dldDY3VrTkhTNjFhbUNrN2VRMmUrc28KU96ZgUV0IU6TMDVHfWql3ZsqMt6nlPVw
+    Net4o3MzSfcVoujNijDrBByI/iuEMcqkMM9AgXKTiA==
+    -----END AGE ENCRYPTED FILE-----
