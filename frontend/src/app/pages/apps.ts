@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { Store } from '../core/store';
 import { Api } from '../core/api';
 import { Application, Field } from '../core/models';
+import { toYaml } from '../core/yaml';
 
 // Screen 2 — CRUD of applications (and their launch fields). Nodes and
 // secrets are edited here too since they're small. Everything mutates the
@@ -15,6 +16,19 @@ import { Application, Field } from '../core/models';
   @if (!store.loaded()) {
     <p class="muted">Chargez d'abord une configuration.</p>
   } @else {
+    <div class="viewtoggle">
+      <button [class.active]="view() === 'form'" (click)="showForm()">Formulaire</button>
+      <button [class.active]="view() === 'code'" (click)="showCode()">&lt;/&gt; Code</button>
+    </div>
+
+    @if (view() === 'code') {
+      <section class="card">
+        <div class="head"><h3>config.yaml</h3><button (click)="applyCode()">Appliquer</button></div>
+        <p class="muted">Éditez le YAML directement. « Appliquer » revalide et met à jour le formulaire.</p>
+        <textarea class="codearea" [value]="codeText()" (input)="onCode($event)" spellcheck="false"></textarea>
+        @if (codeError()) { <p class="status">{{ codeError() }}</p> }
+      </section>
+    } @else {
     <section class="card">
       <div class="head"><h2>Applications</h2><button (click)="addApp()">+ Application</button></div>
       @for (a of apps(); track a.name; let i = $index) {
@@ -94,10 +108,15 @@ import { Application, Field } from '../core/models';
         }
       </ul>
     </section>
+    }
   }
   `,
   styles: [`
     .head { display:flex; justify-content:space-between; align-items:center; }
+    .viewtoggle { display:flex; gap:.4rem; margin-bottom:1rem; }
+    .viewtoggle button { background:transparent; border:1px solid var(--line); color:var(--muted); }
+    .viewtoggle button.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+    .codearea { width:100%; min-height:360px; font-family:monospace; font-size:.8rem; }
     .app { border:1px solid var(--line); border-radius:8px; padding:.75rem; margin:.75rem 0; }
     .app-row { display:flex; gap:.5rem; align-items:center; margin:.4rem 0; flex-wrap:wrap; }
     .app-row input, .app-row select { padding:.35rem .5rem; }
@@ -116,6 +135,31 @@ export class AppsPage {
   newSecretName = '';
   newSecretValue = '';
   secretError = signal('');
+
+  // Code ↔ Form toggle. Form is the default (friendly for non-technical
+  // users); the code view exposes the raw YAML for power users.
+  view = signal<'form' | 'code'>('form');
+  codeText = signal('');
+  codeError = signal('');
+
+  showForm() { this.view.set('form'); }
+  showCode() {
+    const cfg = this.store.config();
+    this.codeText.set(cfg ? toYaml(cfg) : this.store.configText());
+    this.codeError.set('');
+    this.view.set('code');
+  }
+  onCode(e: Event) { this.codeText.set((e.target as HTMLTextAreaElement).value); }
+
+  async applyCode() {
+    this.codeError.set('');
+    try {
+      const res = await this.api.validate(this.codeText());
+      if (!res.config) { this.codeError.set((res.errors ?? ['YAML invalide']).join(' · ')); return; }
+      this.store.setConfig(this.codeText(), res.config, res.errors ?? []);
+      this.view.set('form');
+    } catch (err: any) { this.codeError.set(String(err.message ?? err)); }
+  }
 
   apps = computed<Application[]>(() => this.store.config()?.applications ?? []);
   nodes = computed(() => this.store.config()?.nodes ?? []);

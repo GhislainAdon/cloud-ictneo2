@@ -31,8 +31,15 @@ Angular (statique)  ──HTTP / SSE──▶  binaire Go (127.0.0.1:9876)
 
 1. **Configuration** — importer/coller `config.yaml` + clé age, exporter.
 2. **Applications** — CRUD applications, champs de saisie (text/secret),
-   nœuds et secrets (chiffrement à la volée).
-3. **Dashboard** — état / heartbeat par app, bouton ▶ Run avec saisie des
+   nœuds et secrets (chiffrement à la volée). **Toggle Formulaire ↔ Code** :
+   le formulaire est la vue par défaut (pas de YAML à taper) ; le bouton
+   « </> Code » ouvre le YAML brut, synchronisé dans les deux sens
+   (« Appliquer » revalide et met à jour le formulaire).
+3. **Topologie** — carte SVG en **lecture seule** : quelle application
+   tourne sur quel node, et quels secrets sont utilisés (état
+   activé/désactivé, chiffré/clair). Pas un éditeur, pas un flux n8n —
+   juste un « qu'est-ce qui tourne où » d'un coup d'œil.
+4. **Dashboard** — état / heartbeat par app, bouton ▶ Run avec saisie des
    champs et **sortie live** (SSE).
 
 ## Démarrer (Docker, recommandé)

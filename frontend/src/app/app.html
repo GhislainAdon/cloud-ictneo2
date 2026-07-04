@@ -3,6 +3,7 @@
   <nav>
     <a routerLink="/load" routerLinkActive="active">Configuration</a>
     <a routerLink="/apps" routerLinkActive="active">Applications</a>
+    <a routerLink="/graph" routerLinkActive="active">Topologie</a>
     <a routerLink="/dashboard" routerLinkActive="active">Dashboard</a>
   </nav>
   <div class="keystate" [class.ok]="store.hasKey()">{{ store.hasKey() ? '🔑 clé chargée' : '🔒 pas de clé' }}</div>
