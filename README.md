@@ -44,6 +44,84 @@ docker compose up --build      # UI + API sur http://127.0.0.1:9876
 Puis ouvrez `http://127.0.0.1:9876`, importez `examples/config.yaml` et
 une clé age (`examples/gen-demo.sh` en génère une).
 
+## Utilisation pas à pas
+
+Exemple concret : lancer `terraform apply` sur un node en passant un mot de
+passe comme champ **secret** (chiffré), et une région comme champ **texte**.
+
+**1. Générer une clé age** (une fois) :
+
+```bash
+docker run --rm alpine sh -c 'apk add -q age && age-keygen'
+# -> copiez la ligne AGE-SECRET-KEY-... (clé privée)
+```
+
+**2. Démarrer la console** : `docker compose up --build`, puis ouvrez
+`http://127.0.0.1:9876`.
+
+**3. Écran Configuration** : collez un `config.yaml` de départ (ou importez
+`examples/config.yaml`) et collez la clé age dans le champ « Clé age ».
+Le bandeau affiche alors le nom de votre plateforme (`platform.name`).
+
+```yaml
+platform:
+  name: "Mon Datacenter"
+nodes:
+  - name: node-01
+    host: 10.0.0.5
+    user: admin
+    auth: { type: key, secretRef: ssh_key }
+applications:
+  - name: terraform-apply
+    node: node-01
+    workdir: /opt/infra
+    command: "terraform apply -auto-approve"
+    fields:
+      - { env: TF_VAR_password, label: "Mot de passe", type: secret, secretRef: tf_pass }
+      - { env: TF_VAR_region,   label: "Région",       type: text,   default: eu-west-1 }
+    check: { enabled: true, type: tcp, periodSeconds: 30 }
+    enabled: true
+secrets:
+  ssh_key: PLAINTEXT   # sera chiffré à l'étape 4
+  tf_pass: PLAINTEXT
+```
+
+Chaque champ `secret` référence une entrée de `secrets:` via `secretRef` ;
+chaque champ est injecté dans la commande comme **variable
+d'environnement** (`TF_VAR_password`, `TF_VAR_region`), jamais en argv.
+
+**4. Écran Applications ▸ Secrets** : saisissez le nom (`tf_pass`) et la
+valeur en clair, cliquez **🔒 Chiffrer**. La valeur devient un blob
+age-armored dans `secrets:` (marquée « chiffré »). Faites de même pour
+`ssh_key` (collez votre clé privée SSH). Vous pouvez aussi ajouter /
+supprimer / éditer applications, nodes et champs depuis cet écran.
+
+**5. Écran Configuration ▸ Exporter** : téléchargez le `config.yaml`
+modifié (secrets chiffrés inclus). Vos **3 fichiers portables** :
+
+| Fichier | Contenu | Versionnable ? |
+|---|---|---|
+| `config.yaml` | apps + nodes + secrets chiffrés | Oui (secrets chiffrés) |
+| clé age | déchiffre les secrets | **Non** — jamais commitée |
+| `config.yaml` exporté | l'état après édition | idem |
+
+**6. Écran Dashboard** : chaque app affiche son état / heartbeat
+(activable). Cliquez **↻ Vérifier** (ou cochez `auto`) pour lancer les
+checks. Cliquez **▶ Run** → saisissez les champs `text` (les `secret`
+sont déjà résolus) → la sortie de la commande s'affiche **en direct**.
+
+## Référence API (backend Go, stateless)
+
+Chaque appel transporte sa propre config + clé age ; rien n'est stocké.
+
+| Endpoint | Rôle |
+|---|---|
+| `GET /api/health` | Liveness |
+| `POST /api/validate` | Parse + valide un `config.yaml`, renvoie l'objet config |
+| `POST /api/secrets` | Chiffre une valeur avec la clé age → blob armored |
+| `POST /api/check` | Heartbeat `tcp`/`command` par app |
+| `POST /api/run` | Déchiffre en RAM, SSH, secrets en env, **stream SSE** de la sortie |
+
 ## Développement
 
 Tout se fait en conteneurs — rien à installer sur le poste.
