@@ -34,6 +34,18 @@ func TestValidateGood(t *testing.T) {
 	}
 }
 
+// Regression: ISSUE-002 — a valid config crashed the UI because Go's nil
+// []string serialized to JSON null, and the template did null.length.
+// Validate() must return a non-nil slice even when there are no errors.
+// Found by /qa on 2026-07-04.
+func TestValidateNeverReturnsNil(t *testing.T) {
+	c, _ := Parse([]byte(good))
+	errs := c.Validate()
+	if errs == nil {
+		t.Fatal("Validate() returned nil; must be a non-nil empty slice so it serializes to a JSON array, not null")
+	}
+}
+
 func TestValidateCatchesProblems(t *testing.T) {
 	bad := `
 platform: {}

@@ -13,3 +13,7 @@ age.key
 config.local.yaml
 
 .DS_Store
+
+# QA reports (screenshots/baselines) are local artifacts
+.gstack/
+.playwright-mcp/
