@@ -79,7 +79,7 @@ export class LoadPage {
   private async applyConfig(text: string) {
     try {
       const res = await this.api.validate(text);
-      this.store.setConfig(text, res.config ?? null, res.errors);
+      this.store.setConfig(text, res.config ?? null, res.errors ?? []);
     } catch (err: any) {
       this.store.setConfig(text, null, [String(err.message ?? err)]);
     }

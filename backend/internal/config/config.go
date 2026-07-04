@@ -77,9 +77,10 @@ func Parse(raw []byte) (*Config, error) {
 }
 
 // Validate returns every problem found (not just the first one) so the
-// UI can show them all at once.
+// UI can show them all at once. Always non-nil so it serializes to a JSON
+// array (never null), which the frontend indexes with .length.
 func (c *Config) Validate() []string {
-	var errs []string
+	errs := []string{}
 	if c.Platform.Name == "" {
 		errs = append(errs, "platform.name is required (white-label display name)")
 	}
