@@ -138,10 +138,32 @@ docker run --rm -it -v "$PWD/frontend:/app" -w /app -p 4200:4200 node:22 \
 
 ## Schéma du `config.yaml`
 
-Voir [examples/config.yaml](examples/config.yaml). Sections : `platform`
-(nom affiché), `nodes` (host/port/user/auth par `secretRef`),
-`applications` (command, `fields[]` text|secret, `check`), `secrets`
-(valeurs age-armored).
+Voir [examples/config.yaml](examples/config.yaml) (secrets en clair, à
+chiffrer dans l'UI) et [examples/config.encrypted.yaml](examples/config.encrypted.yaml)
+(même config, secrets déjà chiffrés en blobs age-armored — la forme réelle).
+
+Sections : `platform` (nom affiché), `nodes` (host/port/user/auth par
+`secretRef`), `applications` (command, `fields[]` text|secret, `check`),
+`secrets` (valeurs age-armored).
+
+Pour une démo prête à charger (clé + config chiffrée générées localement) :
+
+```bash
+./examples/encrypt-demo.sh
+# -> écrit examples/config.encrypted.yaml + imprime la clé AGE-SECRET-KEY-...
+# Chargez les deux dans l'écran Configuration.
+```
+
+## Dépannage
+
+| Symptôme | Cause probable | Solution |
+|---|---|---|
+| Bouton **🔒 Chiffrer** grisé | Pas de clé age chargée, ou nom de secret vide | Chargez la clé (écran Configuration) et saisissez un nom |
+| Écran Applications/Dashboard vide | Config non chargée ou invalide | Chargez un `config.yaml` ; les erreurs de validation s'affichent sur l'écran Configuration |
+| App en état **down** | Node injoignable (`i/o timeout`) ou check qui échoue | Vérifiez `host`/`port`, le pare-feu, ou la commande `check.run` |
+| Run : **`bad private key: ssh: no key found`** | Le secret `ssh_key` n'est pas une vraie clé privée (ex. `PLAINTEXT`) | Mettez la vraie clé privée SSH dans le secret référencé par `auth.secretRef` |
+| Run : **`decrypt failed (wrong age key…)`** | La clé age chargée ne correspond pas aux secrets chiffrés | Chargez la clé age qui a servi à chiffrer ce `config.yaml` |
+| Secrets **« clair (non chiffré) »** | Valeurs jamais chiffrées (ex. importées en clair) | Re-saisissez-les via Applications ▸ Secrets ▸ Chiffrer |
 
 ## Sécurité — à lire
 
