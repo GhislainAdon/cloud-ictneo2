@@ -53,6 +53,15 @@ import { toYaml } from '../core/yaml';
               <input type="number" [(ngModel)]="a.check.periodSeconds" placeholder="60" style="width:70px" />
             }
           </div>
+          <div class="app-row tilerow">
+            <span class="tlabel">Tuile :</span>
+            <input class="ico-in" [value]="a.tile?.icon ?? ''" (input)="setIcon(a, $event)" placeholder="🚀 icône" />
+            @for (c of tileColors; track c) {
+              <button type="button" class="swatch" [class.on]="(a.tile?.color ?? 'accent') === c"
+                      [style.background]="colorVar(c)" (click)="setColor(a, c)" [title]="c"></button>
+            }
+            <span class="thint muted">glissez / redimensionnez sur le Board</span>
+          </div>
           <div class="fields">
             <div class="fhead"><span>Champs de saisie</span><button (click)="addField(a)">+ champ</button></div>
             @for (f of a.fields ?? []; track $index; let j = $index) {
@@ -123,6 +132,12 @@ import { toYaml } from '../core/yaml';
     .grow { flex:1; min-width:160px; }
     .fields { margin-top:.5rem; padding-top:.5rem; border-top:1px dashed var(--line); }
     .fhead { display:flex; justify-content:space-between; font-size:.85rem; color:var(--muted); }
+    .tilerow { gap:.4rem; }
+    .tlabel { color:var(--muted); font-size:.8rem; }
+    .ico-in { width:110px; }
+    .swatch { width:20px; height:20px; border-radius:5px; border:2px solid transparent; padding:0; cursor:pointer; }
+    .swatch.on { border-color:var(--text); }
+    .thint { font-size:.72rem; }
     .danger { color:#e5484d; } .danger.small { padding:0 .4rem; }
     .secrets { list-style:none; padding:0; } .secrets li { padding:.25rem 0; }
     .status { color:#e5a04d; }
@@ -180,6 +195,21 @@ export class AppsPage {
 
   addNode() { this.store.setNodes([...this.store.nodes(), { name: 'node', host: '', port: 22, user: '', auth: { type: 'key', secretRef: '' } }]); }
   removeNode(i: number) { this.store.setNodes(this.store.nodes().filter((_, idx) => idx !== i)); }
+
+  // Tile styling (icon/color) — updates the app's tile without pinning a
+  // position (x/y stay untouched, so the board keeps auto-placing it).
+  tileColors = ['accent', 'blue', 'green', 'amber', 'red', 'purple'];
+  colorVar(c: string) {
+    const map: Record<string, string> = { accent: 'var(--accent)', blue: '#4c8dff', green: '#46c26a', amber: '#e5a04d', red: '#e5484d', purple: '#8a5cf6' };
+    return map[c] ?? 'var(--accent)';
+  }
+  setIcon(a: Application, e: Event) {
+    const icon = (e.target as HTMLInputElement).value;
+    this.store.setApps(this.store.apps().map(x => x === a ? { ...x, tile: { ...(x.tile ?? {}), icon } } : x));
+  }
+  setColor(a: Application, color: string) {
+    this.store.setApps(this.store.apps().map(x => x === a ? { ...x, tile: { ...(x.tile ?? {}), color } } : x));
+  }
 
   isEncrypted(name: string) { return (this.store.secretsMap()[name] ?? '').includes('BEGIN AGE ENCRYPTED FILE'); }
   removeSecret(name: string) { const s = { ...this.store.secretsMap() }; delete s[name]; this.store.setSecrets(s); }

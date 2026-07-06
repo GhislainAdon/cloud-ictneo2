@@ -56,10 +56,13 @@ secrets: { ... }   # partagés entre projets, une seule clé age
 
 1. **Board** (accueil, inspiré de homarr) — une **tuile par application**
    dans une grille. Chaque tuile : icône, node, état heartbeat, bouton
-   ▶ run. **Glissez-déposez** les tuiles pour les réordonner ; la position
-   est sauvegardée dans le `config.yaml` (bloc `tile: { x, y, icon, color }`,
-   donc versionnable). À la différence de homarr, une tuile lance une
-   **commande** (pas un lien URL).
+   ▶ run. **Glissez-déposez** pour réordonner, **poignée en bas à droite**
+   pour **redimensionner** (span de colonnes/lignes). **Icône** (emoji) et
+   **couleur** par tuile se règlent dans l'écran Applications. Tout est
+   sauvegardé dans le `config.yaml` (bloc `tile: { x, y, w, h, icon, color }`,
+   versionnable) — `x/y` ne sont posés qu'au drag, `icon/color` sans épingler
+   la position. À la différence de homarr, une tuile lance une **commande**
+   (pas un lien URL).
 2. **Applications** — CRUD applications, champs de saisie (text/secret),
    nœuds et secrets (chiffrement à la volée). **Toggle Formulaire ↔ Code** :
    le formulaire est la vue par défaut (pas de YAML à taper) ; le bouton
