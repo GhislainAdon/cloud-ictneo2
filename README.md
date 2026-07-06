@@ -29,7 +29,12 @@ Angular (statique)  ──HTTP / SSE──▶  binaire Go (127.0.0.1:9876)
 
 ## Écrans
 
-1. **Configuration** — importer/coller `config.yaml` + clé age, exporter.
+1. **Board** (accueil, inspiré de homarr) — une **tuile par application**
+   dans une grille. Chaque tuile : icône, node, état heartbeat, bouton
+   ▶ run. **Glissez-déposez** les tuiles pour les réordonner ; la position
+   est sauvegardée dans le `config.yaml` (bloc `tile: { x, y, icon, color }`,
+   donc versionnable). À la différence de homarr, une tuile lance une
+   **commande** (pas un lien URL).
 2. **Applications** — CRUD applications, champs de saisie (text/secret),
    nœuds et secrets (chiffrement à la volée). **Toggle Formulaire ↔ Code** :
    le formulaire est la vue par défaut (pas de YAML à taper) ; le bouton
@@ -37,10 +42,11 @@ Angular (statique)  ──HTTP / SSE──▶  binaire Go (127.0.0.1:9876)
    (« Appliquer » revalide et met à jour le formulaire).
 3. **Topologie** — carte SVG en **lecture seule** : quelle application
    tourne sur quel node, et quels secrets sont utilisés (état
-   activé/désactivé, chiffré/clair). Pas un éditeur, pas un flux n8n —
-   juste un « qu'est-ce qui tourne où » d'un coup d'œil.
-4. **Dashboard** — état / heartbeat par app, bouton ▶ Run avec saisie des
-   champs et **sortie live** (SSE).
+   activé/désactivé, chiffré/clair).
+4. **Configuration** — importer/coller `config.yaml` + clé age, exporter.
+
+Le board absorbe l'ancien Dashboard : heartbeat, run avec saisie des
+champs et **sortie live** (SSE) se font depuis les tuiles.
 
 ## Démarrer (Docker, recommandé)
 
