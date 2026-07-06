@@ -122,7 +122,7 @@ export class BoardPage implements OnDestroy {
   private api = inject(Api);
   readonly cols = COLS;
 
-  apps = computed<Application[]>(() => this.store.config()?.applications ?? []);
+  apps = computed<Application[]>(() => this.store.apps());
   results = signal<Record<string, CheckResult>>({});
   busy = signal(false);
   autoCheck = false;
@@ -206,24 +206,23 @@ export class BoardPage implements OnDestroy {
   // in-place mutation + {...cfg} keeps the same array ref and is memoized
   // away by the signal graph.
   placeAt(name: string, x: number, y: number) {
-    const cfg = this.store.config()!;
     const lay = this.layout();
     const src = lay.find(p => p.app.name === name);
     if (!src || (src.x === x && src.y === y)) return;
     const dst = lay.find(p => p.x === x && p.y === y && p.app !== src.app);
-    const apps = cfg.applications.map(a => {
+    const apps = this.store.apps().map(a => {
       if (a === src.app) return { ...a, tile: { ...(a.tile ?? {}), x, y } };
       if (dst && a === dst.app) return { ...a, tile: { ...(a.tile ?? {}), x: src.x, y: src.y } };
       return a;
     });
-    this.store.config.set({ ...cfg, applications: apps });
+    this.store.setApps(apps);
   }
 
   async checkNow() {
     this.busy.set(true);
     try {
       const enabled = this.apps().filter(a => a.enabled).map(a => a.name);
-      this.results.set(await this.api.check(this.store.configText(), this.store.ageKey(), enabled));
+      this.results.set(await this.api.check(this.store.yaml(), this.store.ageKey(), enabled));
     } catch { /* no result */ }
     finally { this.busy.set(false); }
   }
@@ -251,7 +250,7 @@ export class BoardPage implements OnDestroy {
     this.output.set('');
     try {
       await this.api.run(
-        { config: this.store.configText(), ageKey: this.store.ageKey(), app: a.name, fields: this.fieldValues },
+        { config: this.store.yaml(), ageKey: this.store.ageKey(), app: a.name, fields: this.fieldValues },
         (event, data) => {
           if (event === 'output') this.output.update(o => o + data + '\n');
           else if (event === 'error') this.output.update(o => o + '⚠ ' + data + '\n');

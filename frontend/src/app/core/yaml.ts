@@ -1,4 +1,4 @@
-import { Config } from './models';
+import { Application, Config, Node } from './models';
 
 // Minimal YAML emitter tailored to our Config shape. We avoid pulling a
 // full YAML lib into the bundle; the backend remains the source of truth
@@ -11,41 +11,43 @@ export function toYaml(c: Config): string {
     return s;
   };
   const lines: string[] = [];
-  lines.push('platform:');
-  lines.push(`  name: ${q(c.platform?.name ?? '')}`);
 
-  lines.push('nodes:');
-  for (const n of c.nodes ?? []) {
-    lines.push(`  - name: ${q(n.name)}`);
-    lines.push(`    host: ${q(n.host)}`);
-    if (n.port) lines.push(`    port: ${n.port}`);
-    lines.push(`    user: ${q(n.user)}`);
-    lines.push(`    auth: { type: ${n.auth.type}, secretRef: ${q(n.auth.secretRef)} }`);
+  if (c.platform?.name) {
+    lines.push('platform:');
+    lines.push(`  name: ${q(c.platform.name)}`);
   }
 
-  lines.push('applications:');
-  for (const a of c.applications ?? []) {
-    lines.push(`  - name: ${q(a.name)}`);
-    lines.push(`    node: ${q(a.node)}`);
-    if (a.workdir) lines.push(`    workdir: ${q(a.workdir)}`);
-    lines.push(`    command: ${q(a.command)}`);
+  // Nodes/apps live under each project, indented two extra spaces.
+  const nodeLines = (n: Node, pad: string) => {
+    lines.push(`${pad}- name: ${q(n.name)}`);
+    lines.push(`${pad}  host: ${q(n.host)}`);
+    if (n.port) lines.push(`${pad}  port: ${n.port}`);
+    lines.push(`${pad}  user: ${q(n.user)}`);
+    lines.push(`${pad}  auth: { type: ${n.auth.type}, secretRef: ${q(n.auth.secretRef)} }`);
+  };
+
+  const appLines = (a: Application, pad: string) => {
+    lines.push(`${pad}- name: ${q(a.name)}`);
+    lines.push(`${pad}  node: ${q(a.node)}`);
+    if (a.workdir) lines.push(`${pad}  workdir: ${q(a.workdir)}`);
+    lines.push(`${pad}  command: ${q(a.command)}`);
     if (a.fields?.length) {
-      lines.push('    fields:');
+      lines.push(`${pad}  fields:`);
       for (const f of a.fields) {
         const parts = [`env: ${f.env}`, `type: ${f.type}`];
         if (f.label) parts.push(`label: ${q(f.label)}`);
         if (f.secretRef) parts.push(`secretRef: ${q(f.secretRef)}`);
         if (f.default) parts.push(`default: ${q(f.default)}`);
-        lines.push(`      - { ${parts.join(', ')} }`);
+        lines.push(`${pad}    - { ${parts.join(', ')} }`);
       }
     }
     const ch = a.check;
     if (ch?.enabled) {
-      lines.push(`    check: { enabled: true, type: ${ch.type}, run: ${q(ch.run ?? '')}, periodSeconds: ${ch.periodSeconds ?? 60} }`);
+      lines.push(`${pad}  check: { enabled: true, type: ${ch.type}, run: ${q(ch.run ?? '')}, periodSeconds: ${ch.periodSeconds ?? 60} }`);
     } else {
-      lines.push('    check: { enabled: false }');
+      lines.push(`${pad}  check: { enabled: false }`);
     }
-    lines.push(`    enabled: ${a.enabled}`);
+    lines.push(`${pad}  enabled: ${a.enabled}`);
     if (a.tile) {
       const t = a.tile;
       const parts = [`x: ${t.x ?? 0}`, `y: ${t.y ?? 0}`];
@@ -53,8 +55,17 @@ export function toYaml(c: Config): string {
       if (t.h && t.h !== 1) parts.push(`h: ${t.h}`);
       if (t.icon) parts.push(`icon: ${q(t.icon)}`);
       if (t.color) parts.push(`color: ${q(t.color)}`);
-      lines.push(`    tile: { ${parts.join(', ')} }`);
+      lines.push(`${pad}  tile: { ${parts.join(', ')} }`);
     }
+  };
+
+  lines.push('projects:');
+  for (const p of c.projects ?? []) {
+    lines.push(`  - name: ${q(p.name)}`);
+    lines.push('    nodes:');
+    for (const n of p.nodes ?? []) nodeLines(n, '      ');
+    lines.push('    applications:');
+    for (const a of p.applications ?? []) appLines(a, '      ');
   }
 
   lines.push('secrets:');

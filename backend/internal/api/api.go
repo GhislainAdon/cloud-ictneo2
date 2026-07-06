@@ -122,7 +122,7 @@ func check(w http.ResponseWriter, r *http.Request) {
 	for _, a := range req.Apps {
 		want[a] = true
 	}
-	for _, app := range c.Applications {
+	for _, app := range c.AllApps() {
 		if len(want) > 0 && !want[app.Name] {
 			continue
 		}
@@ -130,7 +130,8 @@ func check(w http.ResponseWriter, r *http.Request) {
 			results[app.Name] = map[string]any{"state": "disabled"}
 			continue
 		}
-		node, ok := c.FindNode(app.Node)
+		_, proj := c.FindApp(app.Name)
+		node, ok := proj.FindNode(app.Node)
 		if !ok {
 			results[app.Name] = map[string]any{"state": "error", "detail": "node not found"}
 			continue
@@ -177,12 +178,12 @@ func run(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "invalid config", "details": problems})
 		return
 	}
-	app, ok := c.FindApp(req.App)
-	if !ok {
+	app, proj := c.FindApp(req.App)
+	if app == nil {
 		writeJSON(w, 404, map[string]string{"error": "application not found"})
 		return
 	}
-	node, ok := c.FindNode(app.Node)
+	node, ok := proj.FindNode(app.Node)
 	if !ok {
 		writeJSON(w, 400, map[string]string{"error": "node not found"})
 		return

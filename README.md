@@ -27,6 +27,31 @@ Angular (statique)  ──HTTP / SSE──▶  binaire Go (127.0.0.1:9876)
   (commande de check custom, ex. `systemctl is-active`), avec période
   configurable, activable/désactivable.
 
+## Multi-projet
+
+Un `config.yaml` peut contenir **plusieurs projets** (section `projects:`,
+chacun ses `nodes`/`applications`), avec des **secrets partagés** (une clé
+age). Le **nom dans le header est cliquable** : il ouvre un menu pour
+**basculer** d'un projet à l'autre, en **créer**, le **renommer** ou le
+**supprimer**. Les écrans (Board, Applications, Topologie) opèrent sur le
+**projet courant**.
+
+Rétrocompatible : un `config.yaml` v1/v2 (sans `projects:`, avec
+`nodes`/`applications` au premier niveau) se charge comme **un projet
+unique** nommé d'après `platform.name`.
+
+```yaml
+platform: { name: "Mon workspace" }
+projects:
+  - name: dc-paris
+    nodes: [ ... ]
+    applications: [ ... ]
+  - name: dc-lyon
+    nodes: [ ... ]
+    applications: [ ... ]
+secrets: { ... }   # partagés entre projets, une seule clé age
+```
+
 ## Écrans
 
 1. **Board** (accueil, inspiré de homarr) — une **tuile par application**
