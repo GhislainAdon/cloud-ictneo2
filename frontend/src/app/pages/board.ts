@@ -13,7 +13,7 @@ import { Application, CheckResult } from '../core/models';
 
 const COLS = 4;
 
-interface Placed { app: Application; x: number; y: number; icon: string; color: string; }
+interface Placed { app: Application; x: number; y: number; w: number; h: number; icon: string; color: string; }
 
 @Component({
   selector: 'page-board',
@@ -45,7 +45,8 @@ interface Placed { app: Application; x: number; y: number; icon: string; color: 
         @for (t of tiles(); track t.app.name) {
           <div class="tile" [class.off]="!t.app.enabled" [class.dragging]="dragging() === t.app.name"
                [attr.data-x]="t.x" [attr.data-y]="t.y"
-               [style.gridColumn]="t.x + 1" [style.gridRow]="t.y + 1"
+               [style.gridColumn]="(t.x + 1) + ' / span ' + spanW(t)"
+               [style.gridRow]="(t.y + 1) + ' / span ' + spanH(t)"
                [style.borderLeft]="'3px solid ' + colorVar(t.color)"
                (pointerdown)="startDrag($event, t.app.name)">
             <div class="trow">
@@ -62,6 +63,7 @@ interface Placed { app: Application; x: number; y: number; icon: string; color: 
                 <button class="run" (click)="openRun(t.app)">▶ run</button>
               }
             </div>
+            <div class="resize" (pointerdown)="startResize($event, t.app.name)" title="redimensionner"></div>
           </div>
         }
       </div>
@@ -94,10 +96,13 @@ interface Placed { app: Application; x: number; y: number; icon: string; color: 
     .board { display:grid; gap:12px; }
     .cell { border:1px dashed transparent; border-radius:12px; }
     .cell.over { border-color:var(--accent); background:rgba(76,141,255,.08); }
-    .tile { background:var(--bg); border:1px solid var(--line); border-radius:12px; padding:12px; cursor:grab; display:flex; flex-direction:column; touch-action:none; user-select:none; }
+    .tile { position:relative; background:var(--bg); border:1px solid var(--line); border-radius:12px; padding:12px; cursor:grab; display:flex; flex-direction:column; touch-action:none; user-select:none; overflow:hidden; }
     .tile:active { cursor:grabbing; }
     .tile.off { opacity:.5; }
     .tile.dragging { opacity:.35; pointer-events:none; }
+    .resize { position:absolute; right:2px; bottom:2px; width:16px; height:16px; cursor:nwse-resize; opacity:.5; }
+    .resize::after { content:''; position:absolute; right:3px; bottom:3px; width:7px; height:7px; border-right:2px solid var(--muted); border-bottom:2px solid var(--muted); }
+    .tile:hover .resize { opacity:1; }
     .trow { display:flex; align-items:center; justify-content:space-between; }
     .ico { font-size:22px; line-height:1; }
     .name { margin:.4rem 0 0; font-weight:600; font-size:.95rem; }
@@ -129,18 +134,22 @@ export class BoardPage implements OnDestroy {
   private timer: any = null;
   dragging = signal<string | null>(null);
   overCell = signal<string>('');
+  resizing = signal<string | null>(null);
+  resizeDims = signal<{ w: number; h: number } | null>(null);
 
   runApp = signal<Application | null>(null);
   fieldValues: Record<string, string> = {};
   output = signal('');
   running = signal(false);
 
-  // Pure layout: explicit tiles keep their x/y; the rest fill free cells
-  // row-major. No mutation here — dragging materializes a tile.
+  // Pure layout: tiles with an explicit x/y keep it; the rest fill free
+  // cells row-major. A tile with only icon/color (no x/y) still auto-
+  // positions. No mutation here — dragging/resizing materializes a tile.
   private layout = computed<Placed[]>(() => {
     const apps = this.apps();
+    const positioned = (a: Application) => a.tile != null && a.tile.x != null && a.tile.y != null;
     const occupied = new Set<string>();
-    apps.forEach(a => { if (a.tile) occupied.add(a.tile.x + ',' + a.tile.y); });
+    apps.forEach(a => { if (positioned(a)) occupied.add(a.tile!.x + ',' + a.tile!.y); });
     let cursor = 0;
     const nextFree = () => {
       for (;;) {
@@ -150,13 +159,17 @@ export class BoardPage implements OnDestroy {
       }
     };
     return apps.map(a => {
-      const pos = a.tile ? { x: a.tile.x, y: a.tile.y } : nextFree();
-      return { app: a, x: pos.x, y: pos.y, icon: a.tile?.icon || defaultIcon(a), color: a.tile?.color || 'accent' };
+      const pos = positioned(a) ? { x: a.tile!.x!, y: a.tile!.y! } : nextFree();
+      return {
+        app: a, x: pos.x, y: pos.y,
+        w: a.tile?.w || 1, h: a.tile?.h || 1,
+        icon: a.tile?.icon || defaultIcon(a), color: a.tile?.color || 'accent',
+      };
     });
   });
 
   tiles = computed(() => this.layout());
-  rows = computed(() => Math.max(2, ...this.layout().map(p => p.y + 1)) + 1);
+  rows = computed(() => Math.max(2, ...this.layout().map(p => p.y + p.h)) + 1);
   cells = computed(() => {
     const out: { x: number; y: number; k: string }[] = [];
     for (let y = 0; y < this.rows(); y++)
@@ -173,30 +186,66 @@ export class BoardPage implements OnDestroy {
   textFields(a: Application) { return (a.fields ?? []).filter(f => f.type === 'text'); }
   secretFields(a: Application) { return (a.fields ?? []).filter(f => f.type === 'secret'); }
 
+  // Column/row span, previewing the live size while a resize is in flight.
+  spanW(t: Placed) { const r = this.resizeDims(); return this.resizing() === t.app.name && r ? r.w : t.w; }
+  spanH(t: Placed) { const r = this.resizeDims(); return this.resizing() === t.app.name && r ? r.h : t.h; }
+
   // Pointer-based dragging — reliable, testable, and works on touch
   // (native HTML5 draggable does none of these). pointerdown starts;
   // window pointermove/up (below) track and drop.
   startDrag(e: PointerEvent, name: string) {
-    if ((e.target as HTMLElement).closest('button')) return; // let Run click through
+    if ((e.target as HTMLElement).closest('button, .resize')) return; // let Run / resize handle through
     e.preventDefault();
     this.dragging.set(name);
   }
 
+  startResize(e: PointerEvent, name: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    this.resizing.set(name);
+    const p = this.layout().find(x => x.app.name === name);
+    this.resizeDims.set(p ? { w: p.w, h: p.h } : { w: 1, h: 1 });
+  }
+
   @HostListener('window:pointermove', ['$event'])
   onPointerMove(e: PointerEvent) {
-    if (!this.dragging()) return;
     const host = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-x]');
-    if (host) this.overCell.set(host.getAttribute('data-x') + ',' + host.getAttribute('data-y'));
+    if (this.resizing()) {
+      if (!host) return;
+      const src = this.layout().find(p => p.app.name === this.resizing());
+      if (!src) return;
+      const cx = +host.getAttribute('data-x')!, cy = +host.getAttribute('data-y')!;
+      const w = Math.max(1, Math.min(COLS - src.x, cx - src.x + 1));
+      const h = Math.max(1, cy - src.y + 1);
+      this.resizeDims.set({ w, h });
+      return;
+    }
+    if (this.dragging() && host) {
+      this.overCell.set(host.getAttribute('data-x') + ',' + host.getAttribute('data-y'));
+    }
   }
 
   @HostListener('window:pointerup', ['$event'])
   onPointerUp(e: PointerEvent) {
+    if (this.resizing()) {
+      const name = this.resizing()!, dims = this.resizeDims();
+      if (dims) this.resizeTo(name, dims.w, dims.h);
+      this.resizing.set(null);
+      this.resizeDims.set(null);
+      return;
+    }
     const name = this.dragging();
     if (!name) return;
     const host = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-x]');
     if (host) this.placeAt(name, +host.getAttribute('data-x')!, +host.getAttribute('data-y')!);
     this.dragging.set(null);
     this.overCell.set('');
+  }
+
+  resizeTo(name: string, w: number, h: number) {
+    const apps = this.store.apps().map(a =>
+      a.name === name ? { ...a, tile: { ...(a.tile ?? {}), w, h } } : a);
+    this.store.setApps(apps);
   }
 
   // placeAt moves the dragged app to (x,y), swapping with whatever tile is

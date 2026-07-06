@@ -48,9 +48,11 @@ export function toYaml(c: Config): string {
       lines.push(`${pad}  check: { enabled: false }`);
     }
     lines.push(`${pad}  enabled: ${a.enabled}`);
-    if (a.tile) {
+    if (a.tile && (a.tile.x != null || a.tile.icon || a.tile.color || a.tile.w || a.tile.h)) {
       const t = a.tile;
-      const parts = [`x: ${t.x ?? 0}`, `y: ${t.y ?? 0}`];
+      const parts: string[] = [];
+      if (t.x != null) parts.push(`x: ${t.x}`);
+      if (t.y != null) parts.push(`y: ${t.y}`);
       if (t.w && t.w !== 1) parts.push(`w: ${t.w}`);
       if (t.h && t.h !== 1) parts.push(`h: ${t.h}`);
       if (t.icon) parts.push(`icon: ${q(t.icon)}`);

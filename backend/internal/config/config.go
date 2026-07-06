@@ -46,9 +46,11 @@ type Check struct {
 }
 
 // Tile is the optional board placement + styling for an application.
+// X/Y are pointers so "not positioned yet" (auto-layout) is distinct from
+// position (0,0); icon/color can be set without pinning a position.
 type Tile struct {
-	X     int    `yaml:"x" json:"x"`
-	Y     int    `yaml:"y" json:"y"`
+	X     *int   `yaml:"x,omitempty" json:"x,omitempty"`
+	Y     *int   `yaml:"y,omitempty" json:"y,omitempty"`
 	W     int    `yaml:"w,omitempty" json:"w,omitempty"`
 	H     int    `yaml:"h,omitempty" json:"h,omitempty"`
 	Icon  string `yaml:"icon,omitempty" json:"icon,omitempty"`

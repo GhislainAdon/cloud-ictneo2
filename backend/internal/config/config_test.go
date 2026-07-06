@@ -107,6 +107,37 @@ func TestLegacyNormalizesToOneProject(t *testing.T) {
 	}
 }
 
+// Tile coords are optional: a style-only tile (icon/color, no x/y) keeps
+// X/Y nil so the board auto-positions it; a placed tile parses its coords.
+func TestTileOptionalCoords(t *testing.T) {
+	const cfg = `
+platform: { name: DC }
+projects:
+  - name: p
+    nodes:
+      - { name: n, host: h, user: u, auth: { type: key, secretRef: k } }
+    applications:
+      - { name: styled, node: n, command: x, check: { enabled: false }, enabled: true, tile: { icon: "🚀", color: green } }
+      - { name: placed, node: n, command: x, check: { enabled: false }, enabled: true, tile: { x: 2, y: 1, w: 2 } }
+secrets: { k: PLAINTEXT }
+`
+	c, err := Parse([]byte(cfg))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if errs := c.Validate(); len(errs) != 0 {
+		t.Fatalf("expected valid, got %v", errs)
+	}
+	styled, _ := c.FindApp("styled")
+	if styled.Tile == nil || styled.Tile.X != nil || styled.Tile.Icon != "🚀" {
+		t.Fatalf("styled tile should have icon but nil X, got %+v", styled.Tile)
+	}
+	placed, _ := c.FindApp("placed")
+	if placed.Tile == nil || placed.Tile.X == nil || *placed.Tile.X != 2 || placed.Tile.W != 2 {
+		t.Fatalf("placed tile should have X=2 W=2, got %+v", placed.Tile)
+	}
+}
+
 // A multi-project file validates and both apps are findable across projects.
 func TestMultiProject(t *testing.T) {
 	const multi = `

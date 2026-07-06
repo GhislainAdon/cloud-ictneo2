@@ -26,14 +26,15 @@ export interface Check {
   periodSeconds?: number;
 }
 
-// Tile placement + styling for the drag-and-drop board. Optional and
-// backward-compatible: apps without a tile get auto-positioned.
+// Tile placement + styling for the drag-and-drop board. Everything is
+// optional: x/y are set only once a tile is dragged (otherwise it auto-
+// positions); icon/color can be set without pinning a position.
 export interface Tile {
-  x: number;
-  y: number;
-  w?: number;
-  h?: number;
-  icon?: string;   // Tabler icon name, e.g. "terminal-2"
+  x?: number;
+  y?: number;
+  w?: number;      // column span (default 1)
+  h?: number;      // row span (default 1)
+  icon?: string;   // emoji, e.g. "🚀"
   color?: string;  // accent | blue | green | amber | red | purple
 }
 
