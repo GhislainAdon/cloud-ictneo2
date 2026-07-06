@@ -1,8 +1,9 @@
 // Package config parses and validates the single Envoy-style YAML file
 // that drives the whole launcher. The file is the database: platform
-// branding, nodes, applications and a SOPS-encrypted `secrets:` section.
-// Secret VALUES are opaque here (ENC[...] blobs); only their keys are
-// inspected so secretRefs can be validated without any decryption.
+// branding, one or more projects (each with its nodes + applications) and
+// a shared SOPS/age-encrypted `secrets:` section. Secret VALUES are opaque
+// here (ENC[...] blobs); only their keys are inspected so secretRefs can
+// be validated without any decryption.
 package config
 
 import (
@@ -65,26 +66,54 @@ type Application struct {
 	Tile    *Tile   `yaml:"tile,omitempty" json:"tile,omitempty"`
 }
 
-type Config struct {
-	Platform     Platform      `yaml:"platform" json:"platform"`
+// Project groups nodes + applications under one display name. The board,
+// applications and topology screens all operate on the "current" project.
+type Project struct {
+	Name         string        `yaml:"name" json:"name"`
 	Nodes        []Node        `yaml:"nodes" json:"nodes"`
 	Applications []Application `yaml:"applications" json:"applications"`
+}
+
+type Config struct {
+	Platform Platform  `yaml:"platform" json:"platform"`
+	Projects []Project `yaml:"projects,omitempty" json:"projects"`
+
+	// Legacy single-project fields (v1/v2 input). Folded into Projects by
+	// normalize(); json:"-" so the frontend only ever sees Projects.
+	Nodes        []Node        `yaml:"nodes,omitempty" json:"-"`
+	Applications []Application `yaml:"applications,omitempty" json:"-"`
+
 	// Secrets values are age-armored blobs (or plaintext before first
-	// encryption). Echoed back to the same client that sent them.
+	// encryption), shared across all projects. Echoed back to the client.
 	Secrets map[string]string `yaml:"secrets,omitempty" json:"secrets"`
 }
 
 var nameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 var envRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// Parse unmarshals the raw YAML. Unknown top-level keys (like `sops:`)
-// are ignored on purpose: the raw bytes stay authoritative.
+// Parse unmarshals the raw YAML and normalizes it so there is always a
+// Projects list. Unknown top-level keys (like `sops:`) are ignored.
 func Parse(raw []byte) (*Config, error) {
 	var c Config
 	if err := yaml.Unmarshal(raw, &c); err != nil {
 		return nil, fmt.Errorf("invalid YAML: %w", err)
 	}
+	c.normalize()
 	return &c, nil
+}
+
+// normalize folds a legacy top-level nodes/applications block into a
+// single implicit project, so older v1/v2 configs load unchanged.
+func (c *Config) normalize() {
+	if len(c.Projects) == 0 && (len(c.Nodes) > 0 || len(c.Applications) > 0) {
+		name := c.Platform.Name
+		if name == "" {
+			name = "Projet 1"
+		}
+		c.Projects = []Project{{Name: name, Nodes: c.Nodes, Applications: c.Applications}}
+	}
+	c.Nodes = nil
+	c.Applications = nil
 }
 
 // Validate returns every problem found (not just the first one) so the
@@ -92,105 +121,140 @@ func Parse(raw []byte) (*Config, error) {
 // array (never null), which the frontend indexes with .length.
 func (c *Config) Validate() []string {
 	errs := []string{}
-	if c.Platform.Name == "" {
-		errs = append(errs, "platform.name is required (white-label display name)")
+	if len(c.Projects) == 0 {
+		errs = append(errs, "at least one project (or top-level nodes/applications) is required")
 	}
 
-	nodeNames := map[string]bool{}
-	for i, n := range c.Nodes {
-		p := fmt.Sprintf("nodes[%d]", i)
-		if !nameRe.MatchString(n.Name) {
-			errs = append(errs, p+": name must be lowercase RFC-1123 (a-z, 0-9, '-')")
+	projNames := map[string]bool{}
+	appNames := map[string]bool{} // globally unique so run/check can find by name alone
+	for pi := range c.Projects {
+		proj := &c.Projects[pi]
+		pp := fmt.Sprintf("projects[%d]", pi)
+		if proj.Name == "" {
+			errs = append(errs, pp+": name is required")
 		}
-		if nodeNames[n.Name] {
-			errs = append(errs, p+": duplicate node name "+n.Name)
+		if projNames[proj.Name] {
+			errs = append(errs, pp+": duplicate project name "+proj.Name)
 		}
-		nodeNames[n.Name] = true
-		if n.Host == "" {
-			errs = append(errs, p+": host is required")
-		}
-		if n.User == "" {
-			errs = append(errs, p+": user is required")
-		}
-		switch n.Auth.Type {
-		case "key", "password":
-			if n.Auth.SecretRef == "" {
-				errs = append(errs, p+": auth.secretRef is required")
-			} else if _, ok := c.Secrets[n.Auth.SecretRef]; !ok {
-				errs = append(errs, p+": auth.secretRef '"+n.Auth.SecretRef+"' not found in secrets")
-			}
-		default:
-			errs = append(errs, p+": auth.type must be 'key' or 'password'")
-		}
-	}
+		projNames[proj.Name] = true
 
-	appNames := map[string]bool{}
-	for i, a := range c.Applications {
-		p := fmt.Sprintf("applications[%d]", i)
-		if !nameRe.MatchString(a.Name) {
-			errs = append(errs, p+": name must be lowercase RFC-1123 (a-z, 0-9, '-')")
+		nodeNames := map[string]bool{}
+		for i := range proj.Nodes {
+			errs = append(errs, c.validateNode(fmt.Sprintf("%s.nodes[%d]", pp, i), &proj.Nodes[i], nodeNames)...)
 		}
-		if appNames[a.Name] {
-			errs = append(errs, p+": duplicate application name "+a.Name)
-		}
-		appNames[a.Name] = true
-		if !nodeNames[a.Node] {
-			errs = append(errs, p+": node '"+a.Node+"' is not declared in nodes")
-		}
-		if a.Command == "" {
-			errs = append(errs, p+": command is required")
-		}
-		for j, f := range a.Fields {
-			fp := fmt.Sprintf("%s.fields[%d]", p, j)
-			if !envRe.MatchString(f.Env) {
-				errs = append(errs, fp+": env must be a valid environment variable name")
-			}
-			switch f.Type {
-			case "text":
-			case "secret":
-				if f.SecretRef == "" {
-					errs = append(errs, fp+": secret fields need a secretRef")
-				} else if _, ok := c.Secrets[f.SecretRef]; !ok {
-					errs = append(errs, fp+": secretRef '"+f.SecretRef+"' not found in secrets")
-				}
-			default:
-				errs = append(errs, fp+": type must be 'text' or 'secret'")
-			}
-		}
-		if a.Check.Enabled {
-			switch a.Check.Type {
-			case "tcp":
-			case "command":
-				if a.Check.Run == "" {
-					errs = append(errs, p+": check.run is required for command checks")
-				}
-			default:
-				errs = append(errs, p+": check.type must be 'tcp' or 'command'")
-			}
-			if a.Check.PeriodSeconds < 5 {
-				errs = append(errs, p+": check.periodSeconds must be >= 5")
-			}
+		for i := range proj.Applications {
+			errs = append(errs, c.validateApp(fmt.Sprintf("%s.applications[%d]", pp, i), &proj.Applications[i], nodeNames, appNames)...)
 		}
 	}
 	return errs
 }
 
-// FindNode returns the node declaration for an application.
-func (c *Config) FindNode(name string) (*Node, bool) {
-	for i := range c.Nodes {
-		if c.Nodes[i].Name == name {
-			return &c.Nodes[i], true
+func (c *Config) validateNode(p string, n *Node, nodeNames map[string]bool) []string {
+	var errs []string
+	if !nameRe.MatchString(n.Name) {
+		errs = append(errs, p+": name must be lowercase RFC-1123 (a-z, 0-9, '-')")
+	}
+	if nodeNames[n.Name] {
+		errs = append(errs, p+": duplicate node name "+n.Name)
+	}
+	nodeNames[n.Name] = true
+	if n.Host == "" {
+		errs = append(errs, p+": host is required")
+	}
+	if n.User == "" {
+		errs = append(errs, p+": user is required")
+	}
+	switch n.Auth.Type {
+	case "key", "password":
+		if n.Auth.SecretRef == "" {
+			errs = append(errs, p+": auth.secretRef is required")
+		} else if _, ok := c.Secrets[n.Auth.SecretRef]; !ok {
+			errs = append(errs, p+": auth.secretRef '"+n.Auth.SecretRef+"' not found in secrets")
+		}
+	default:
+		errs = append(errs, p+": auth.type must be 'key' or 'password'")
+	}
+	return errs
+}
+
+func (c *Config) validateApp(p string, a *Application, nodeNames, appNames map[string]bool) []string {
+	var errs []string
+	if !nameRe.MatchString(a.Name) {
+		errs = append(errs, p+": name must be lowercase RFC-1123 (a-z, 0-9, '-')")
+	}
+	if appNames[a.Name] {
+		errs = append(errs, p+": duplicate application name "+a.Name+" (names must be unique across projects)")
+	}
+	appNames[a.Name] = true
+	if !nodeNames[a.Node] {
+		errs = append(errs, p+": node '"+a.Node+"' is not declared in this project's nodes")
+	}
+	if a.Command == "" {
+		errs = append(errs, p+": command is required")
+	}
+	for j := range a.Fields {
+		f := &a.Fields[j]
+		fp := fmt.Sprintf("%s.fields[%d]", p, j)
+		if !envRe.MatchString(f.Env) {
+			errs = append(errs, fp+": env must be a valid environment variable name")
+		}
+		switch f.Type {
+		case "text":
+		case "secret":
+			if f.SecretRef == "" {
+				errs = append(errs, fp+": secret fields need a secretRef")
+			} else if _, ok := c.Secrets[f.SecretRef]; !ok {
+				errs = append(errs, fp+": secretRef '"+f.SecretRef+"' not found in secrets")
+			}
+		default:
+			errs = append(errs, fp+": type must be 'text' or 'secret'")
+		}
+	}
+	if a.Check.Enabled {
+		switch a.Check.Type {
+		case "tcp":
+		case "command":
+			if a.Check.Run == "" {
+				errs = append(errs, p+": check.run is required for command checks")
+			}
+		default:
+			errs = append(errs, p+": check.type must be 'tcp' or 'command'")
+		}
+		if a.Check.PeriodSeconds < 5 {
+			errs = append(errs, p+": check.periodSeconds must be >= 5")
+		}
+	}
+	return errs
+}
+
+// FindApp locates an application by name across all projects, returning
+// the app and its owning project (so its node can be resolved).
+func (c *Config) FindApp(name string) (*Application, *Project) {
+	for pi := range c.Projects {
+		for ai := range c.Projects[pi].Applications {
+			if c.Projects[pi].Applications[ai].Name == name {
+				return &c.Projects[pi].Applications[ai], &c.Projects[pi]
+			}
+		}
+	}
+	return nil, nil
+}
+
+// FindNode returns a node by name within a project.
+func (p *Project) FindNode(name string) (*Node, bool) {
+	for i := range p.Nodes {
+		if p.Nodes[i].Name == name {
+			return &p.Nodes[i], true
 		}
 	}
 	return nil, false
 }
 
-// FindApp returns an application by name.
-func (c *Config) FindApp(name string) (*Application, bool) {
-	for i := range c.Applications {
-		if c.Applications[i].Name == name {
-			return &c.Applications[i], true
-		}
+// AllApps flattens applications across every project.
+func (c *Config) AllApps() []Application {
+	var out []Application
+	for pi := range c.Projects {
+		out = append(out, c.Projects[pi].Applications...)
 	}
-	return nil, false
+	return out
 }

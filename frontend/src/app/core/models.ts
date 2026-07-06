@@ -48,10 +48,17 @@ export interface Application {
   tile?: Tile;
 }
 
-export interface Config {
-  platform: Platform;
+// A project groups nodes + applications under one display name. The board,
+// applications and topology screens operate on the "current" project.
+export interface Project {
+  name: string;
   nodes: Node[];
   applications: Application[];
+}
+
+export interface Config {
+  platform?: Platform;
+  projects: Project[];
   secrets: Record<string, string>;
 }
 

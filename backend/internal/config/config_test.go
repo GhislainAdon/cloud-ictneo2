@@ -80,13 +80,66 @@ applications:
 
 func TestFindHelpers(t *testing.T) {
 	c, _ := Parse([]byte(good))
-	if _, ok := c.FindNode("node-01"); !ok {
-		t.Fatal("node-01 not found")
-	}
-	if _, ok := c.FindApp("tf-apply"); !ok {
+	app, proj := c.FindApp("tf-apply")
+	if app == nil || proj == nil {
 		t.Fatal("tf-apply not found")
 	}
-	if _, ok := c.FindApp("nope"); ok {
+	if _, ok := proj.FindNode("node-01"); !ok {
+		t.Fatal("node-01 not found in project")
+	}
+	if a, _ := c.FindApp("nope"); a != nil {
 		t.Fatal("unexpected app")
+	}
+}
+
+// Legacy v1/v2 configs (top-level nodes/applications, no `projects:`) must
+// normalize into one implicit project so they keep loading unchanged.
+func TestLegacyNormalizesToOneProject(t *testing.T) {
+	c, _ := Parse([]byte(good))
+	if len(c.Projects) != 1 {
+		t.Fatalf("expected 1 normalized project, got %d", len(c.Projects))
+	}
+	if c.Projects[0].Name != "Demo DC" {
+		t.Fatalf("project name should come from platform.name, got %q", c.Projects[0].Name)
+	}
+	if len(c.Projects[0].Applications) != 1 || c.Projects[0].Applications[0].Name != "tf-apply" {
+		t.Fatal("legacy applications not folded into the project")
+	}
+}
+
+// A multi-project file validates and both apps are findable across projects.
+func TestMultiProject(t *testing.T) {
+	const multi = `
+platform: { name: Workspace }
+projects:
+  - name: dc-a
+    nodes:
+      - { name: node-a, host: 10.0.0.1, user: root, auth: { type: key, secretRef: k } }
+    applications:
+      - { name: app-a, node: node-a, command: "echo a", check: { enabled: false }, enabled: true }
+  - name: dc-b
+    nodes:
+      - { name: node-b, host: 10.0.0.2, user: root, auth: { type: key, secretRef: k } }
+    applications:
+      - { name: app-b, node: node-b, command: "echo b", check: { enabled: false }, enabled: true }
+secrets:
+  k: PLAINTEXT
+`
+	c, err := Parse([]byte(multi))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if errs := c.Validate(); len(errs) != 0 {
+		t.Fatalf("expected valid, got %v", errs)
+	}
+	if len(c.Projects) != 2 {
+		t.Fatalf("expected 2 projects, got %d", len(c.Projects))
+	}
+	appB, projB := c.FindApp("app-b")
+	if appB == nil || projB.Name != "dc-b" {
+		t.Fatal("app-b should resolve to project dc-b")
+	}
+	if _, ok := projB.FindNode("node-b"); !ok {
+		t.Fatal("node-b not found in dc-b")
 	}
 }

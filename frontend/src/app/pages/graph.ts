@@ -72,6 +72,8 @@ export class GraphPage {
 
   private layout = computed(() => {
     const cfg = this.store.config();
+    const projNodes = this.store.nodes();
+    const projApps = this.store.apps();
     const boxes: Box[] = [];
     const edges: Edge[] = [];
     if (!cfg) return { boxes, edges, rows: 0 };
@@ -91,7 +93,7 @@ export class GraphPage {
 
     // Nodes column.
     const nodePos = new Map<string, { x: number; y: number }>();
-    (cfg.nodes ?? []).forEach((n, i) => {
+    projNodes.forEach((n, i) => {
       const b: Box = { id: 'n:' + n.name, label: n.name, sub: n.host,
         x: COL.node, y: yOf(i), kind: 'node' };
       boxes.push(b);
@@ -102,7 +104,7 @@ export class GraphPage {
     });
 
     // Applications column.
-    (cfg.applications ?? []).forEach((a, i) => {
+    projApps.forEach((a, i) => {
       const b: Box = { id: 'a:' + a.name, label: a.name, sub: a.enabled ? a.command : '(désactivée)',
         x: COL.app, y: yOf(i), kind: 'app' + (a.enabled ? '' : ' off') };
       boxes.push(b);
@@ -118,7 +120,7 @@ export class GraphPage {
       });
     });
 
-    const rows = Math.max(cfg.applications?.length ?? 0, cfg.nodes?.length ?? 0, Object.keys(cfg.secrets ?? {}).length);
+    const rows = Math.max(projApps.length, projNodes.length, Object.keys(cfg.secrets ?? {}).length);
     return { boxes, edges, rows };
 
     function rightOf(b: { x: number; y: number }) { return { x1: b.x + BOX_W, y1: b.y + BOX_H / 2 }; }

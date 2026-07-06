@@ -48,7 +48,17 @@ input, select, textarea {
   background: var(--panel);
   border-bottom: 1px solid var(--line);
 }
-.topbar .brand { font-weight: 700; font-size: 1.05rem; letter-spacing: .3px; }
+.brandwrap { position: relative; }
+.topbar .brand { font-weight: 700; font-size: 1.05rem; letter-spacing: .3px; background: transparent; border: 0; color: var(--text); padding: 0; cursor: default; }
+.topbar button.brand { cursor: pointer; }
+.topbar .brand .caret { color: var(--muted); font-size: .8rem; }
+.renameinput { font-weight: 700; font-size: 1.05rem; padding: .2rem .4rem; }
+.projmenu { position: absolute; top: 130%; left: 0; z-index: 20; min-width: 200px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: .3rem; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+.projitem { display: block; width: 100%; text-align: left; background: transparent; border: 0; color: var(--text); padding: .45rem .6rem; border-radius: 6px; font-size: .85rem; cursor: pointer; }
+.projitem:hover { background: var(--bg); }
+.projitem.active { color: var(--accent); font-weight: 600; }
+.projitem.danger { color: #e5484d; }
+.projsep { height: 1px; background: var(--line); margin: .3rem 0; }
 .topbar nav { display: flex; gap: 1rem; flex: 1; }
 .topbar nav a { color: var(--muted); padding: .3rem .1rem; border-bottom: 2px solid transparent; }
 .topbar nav a.active { color: var(--text); border-bottom-color: var(--accent); }

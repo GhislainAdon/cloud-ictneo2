@@ -161,35 +161,35 @@ export class AppsPage {
     } catch (err: any) { this.codeError.set(String(err.message ?? err)); }
   }
 
-  apps = computed<Application[]>(() => this.store.config()?.applications ?? []);
-  nodes = computed(() => this.store.config()?.nodes ?? []);
+  // All CRUD operates on the CURRENT project via the store, which rebuilds
+  // references so the computed graph (and the board) update live. Field
+  // edits via [(ngModel)] mutate the app objects in place; store.apps()
+  // still reflects them since it returns those same objects.
+  apps = computed<Application[]>(() => this.store.apps());
+  nodes = computed(() => this.store.nodes());
   nodeNames = computed(() => this.nodes().map(n => n.name));
-  secretNames = computed(() => Object.keys(this.store.config()?.secrets ?? {}));
-
-  private touch() { this.store.config.set({ ...this.store.config()! }); }
+  secretNames = computed(() => Object.keys(this.store.secretsMap()));
 
   addApp() {
-    const c = this.store.config()!;
-    c.applications.push({ name: 'nouvelle-app', node: this.nodeNames()[0] ?? '', command: '', fields: [], check: { enabled: false }, enabled: true });
-    this.touch();
+    const app: Application = { name: 'nouvelle-app', node: this.nodeNames()[0] ?? '', command: '', fields: [], check: { enabled: false }, enabled: true };
+    this.store.setApps([...this.store.apps(), app]);
   }
-  removeApp(i: number) { this.store.config()!.applications.splice(i, 1); this.touch(); }
-  addField(a: Application) { (a.fields ??= []).push({ env: '', type: 'text' } as Field); this.touch(); }
-  removeField(a: Application, j: number) { a.fields!.splice(j, 1); this.touch(); }
+  removeApp(i: number) { this.store.setApps(this.store.apps().filter((_, idx) => idx !== i)); }
+  addField(a: Application) { this.store.setApps(this.store.apps().map(x => x === a ? { ...x, fields: [...(x.fields ?? []), { env: '', type: 'text' } as Field] } : x)); }
+  removeField(a: Application, j: number) { this.store.setApps(this.store.apps().map(x => x === a ? { ...x, fields: (x.fields ?? []).filter((_, k) => k !== j) } : x)); }
 
-  addNode() { this.store.config()!.nodes.push({ name: 'node', host: '', port: 22, user: '', auth: { type: 'key', secretRef: '' } }); this.touch(); }
-  removeNode(i: number) { this.store.config()!.nodes.splice(i, 1); this.touch(); }
+  addNode() { this.store.setNodes([...this.store.nodes(), { name: 'node', host: '', port: 22, user: '', auth: { type: 'key', secretRef: '' } }]); }
+  removeNode(i: number) { this.store.setNodes(this.store.nodes().filter((_, idx) => idx !== i)); }
 
-  isEncrypted(name: string) { return (this.store.config()?.secrets[name] ?? '').includes('BEGIN AGE ENCRYPTED FILE'); }
-  removeSecret(name: string) { delete this.store.config()!.secrets[name]; this.touch(); }
+  isEncrypted(name: string) { return (this.store.secretsMap()[name] ?? '').includes('BEGIN AGE ENCRYPTED FILE'); }
+  removeSecret(name: string) { const s = { ...this.store.secretsMap() }; delete s[name]; this.store.setSecrets(s); }
 
   async encryptSecret() {
     this.secretError.set('');
     try {
       const { encrypted } = await this.api.encryptSecret(this.store.ageKey(), this.newSecretName, this.newSecretValue);
-      this.store.config()!.secrets[this.newSecretName] = encrypted;
+      this.store.setSecrets({ ...this.store.secretsMap(), [this.newSecretName]: encrypted });
       this.newSecretName = ''; this.newSecretValue = '';
-      this.touch();
     } catch (e: any) { this.secretError.set(String(e.message ?? e)); }
   }
 }

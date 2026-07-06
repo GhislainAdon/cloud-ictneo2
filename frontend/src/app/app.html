@@ -1,5 +1,26 @@
 <header class="topbar">
-  <div class="brand">{{ store.platformName() }}</div>
+  <div class="brandwrap">
+    @if (renaming()) {
+      <input class="renameinput" [(ngModel)]="renameValue" (keyup.enter)="commitRename()" (blur)="commitRename()" placeholder="nom du projet" />
+    } @else if (store.loaded()) {
+      <button class="brand" (click)="toggleMenu()">{{ store.platformName() }} <span class="caret">▾</span></button>
+    } @else {
+      <span class="brand">{{ store.platformName() }}</span>
+    }
+    @if (menuOpen()) {
+      <div class="projmenu">
+        @for (name of store.projectNames(); track $index) {
+          <button class="projitem" [class.active]="$index === store.currentProject()" (click)="switchTo($index)">{{ name }}</button>
+        }
+        <div class="projsep"></div>
+        <button class="projitem" (click)="add()">+ nouveau projet</button>
+        <button class="projitem" (click)="startRename()">✎ renommer</button>
+        @if (store.projectNames().length > 1) {
+          <button class="projitem danger" (click)="del()">🗑 supprimer ce projet</button>
+        }
+      </div>
+    }
+  </div>
   <nav>
     <a routerLink="/board" routerLinkActive="active">Board</a>
     <a routerLink="/apps" routerLinkActive="active">Applications</a>
