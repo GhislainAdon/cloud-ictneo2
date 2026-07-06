@@ -44,6 +44,16 @@ type Check struct {
 	PeriodSeconds int    `yaml:"periodSeconds,omitempty" json:"periodSeconds"`
 }
 
+// Tile is the optional board placement + styling for an application.
+type Tile struct {
+	X     int    `yaml:"x" json:"x"`
+	Y     int    `yaml:"y" json:"y"`
+	W     int    `yaml:"w,omitempty" json:"w,omitempty"`
+	H     int    `yaml:"h,omitempty" json:"h,omitempty"`
+	Icon  string `yaml:"icon,omitempty" json:"icon,omitempty"`
+	Color string `yaml:"color,omitempty" json:"color,omitempty"`
+}
+
 type Application struct {
 	Name    string  `yaml:"name" json:"name"`
 	Node    string  `yaml:"node" json:"node"`
@@ -52,6 +62,7 @@ type Application struct {
 	Fields  []Field `yaml:"fields,omitempty" json:"fields"`
 	Check   Check   `yaml:"check,omitempty" json:"check"`
 	Enabled bool    `yaml:"enabled" json:"enabled"`
+	Tile    *Tile   `yaml:"tile,omitempty" json:"tile,omitempty"`
 }
 
 type Config struct {

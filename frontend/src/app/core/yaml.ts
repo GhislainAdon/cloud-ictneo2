@@ -46,6 +46,15 @@ export function toYaml(c: Config): string {
       lines.push('    check: { enabled: false }');
     }
     lines.push(`    enabled: ${a.enabled}`);
+    if (a.tile) {
+      const t = a.tile;
+      const parts = [`x: ${t.x ?? 0}`, `y: ${t.y ?? 0}`];
+      if (t.w && t.w !== 1) parts.push(`w: ${t.w}`);
+      if (t.h && t.h !== 1) parts.push(`h: ${t.h}`);
+      if (t.icon) parts.push(`icon: ${q(t.icon)}`);
+      if (t.color) parts.push(`color: ${q(t.color)}`);
+      lines.push(`    tile: { ${parts.join(', ')} }`);
+    }
   }
 
   lines.push('secrets:');

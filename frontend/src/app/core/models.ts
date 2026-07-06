@@ -26,6 +26,17 @@ export interface Check {
   periodSeconds?: number;
 }
 
+// Tile placement + styling for the drag-and-drop board. Optional and
+// backward-compatible: apps without a tile get auto-positioned.
+export interface Tile {
+  x: number;
+  y: number;
+  w?: number;
+  h?: number;
+  icon?: string;   // Tabler icon name, e.g. "terminal-2"
+  color?: string;  // accent | blue | green | amber | red | purple
+}
+
 export interface Application {
   name: string;
   node: string;
@@ -34,6 +45,7 @@ export interface Application {
   fields?: Field[];
   check: Check;
   enabled: boolean;
+  tile?: Tile;
 }
 
 export interface Config {
