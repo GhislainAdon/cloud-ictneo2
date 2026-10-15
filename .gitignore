@@ -17,3 +17,17 @@ config.local.yaml
 # QA reports (screenshots/baselines) are local artifacts
 .gstack/
 .playwright-mcp/
+
+# Secrets / local env — never commit
+*.age
+!examples/*.yaml
+.env
+.env.*
+*.kubeconfig
+
+# Logs and junk
+*.log
+linkedin_post*.txt
+.idea/
+.vscode/
+!frontend/.vscode/
