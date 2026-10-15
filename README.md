@@ -1,223 +1,161 @@
-# cloud-ictneo2 — Launcher console (white-label)
+# cloud-ictneo2: stateless launcher console
 
-Console web **sans état** pour déclarer et lancer des applications ou
-scripts (**shell, Ansible, Terraform**) sur des nœuds distants via SSH.
-Interface **Angular**, backend **Go** en un seul binaire. Aucune donnée
-n'est stockée : tout l'état vit dans **votre fichier YAML** et la **clé
-age** que vous importez au démarrage. Le nom de la plateforme affiché est
-**personnalisable** (champ `platform.name`).
+[![CI](https://github.com/GhislainAdon/cloud-ictneo2/actions/workflows/ci.yml/badge.svg)](https://github.com/GhislainAdon/cloud-ictneo2/actions/workflows/ci.yml)
+![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go)
+![Angular](https://img.shields.io/badge/Angular-20-DD0031?logo=angular)
+![age](https://img.shields.io/badge/secrets-age%20encrypted-4B32C3)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Principe
+> A white-label web console to declare and **run shell / Ansible / Terraform jobs on remote nodes over SSH**, with **age-encrypted secrets** and **zero server-side state**. The whole "database" is a YAML file you own and can version; the decryption key lives only in the browser tab's memory.
 
-```
-Angular (statique)  ──HTTP / SSE──▶  binaire Go (127.0.0.1:9876)
-  config.yaml + clé age en mémoire navigateur          │ SSH
-  (rien de persisté — un refresh efface tout)          ▼
-                                                  nœuds distants
-```
+[Résumé en français](#résumé-en-français) · [Documentation complète en français](docs/README.fr.md)
 
-- **3 fichiers portables**, import/export : le `config.yaml` (la « base
-  de données »), la **clé age** (import seul, jamais persistée), et le
-  `config.yaml` exporté après modifications.
-- **Secrets chiffrés age/SOPS** : les champs de type `secret` sont
-  chiffrés côté backend avec votre clé age, en RAM. Ils sont injectés
-  dans la commande comme **variables d'environnement** (jamais en argv —
-  invisibles dans `ps aux`).
-- **Heartbeat** par application : `tcp` (nœud joignable) ou `command`
-  (commande de check custom, ex. `systemctl is-active`), avec période
-  configurable, activable/désactivable.
+---
 
-## Multi-projet
+## The problem
 
-Un `config.yaml` peut contenir **plusieurs projets** (section `projects:`,
-chacun ses `nodes`/`applications`), avec des **secrets partagés** (une clé
-age). Le **nom dans le header est cliquable** : il ouvre un menu pour
-**basculer** d'un projet à l'autre, en **créer**, le **renommer** ou le
-**supprimer**. Les écrans (Board, Applications, Topologie) opèrent sur le
-**projet courant**.
+Ops teams often keep a folder of "run this on that box" scripts plus a password manager entry for every secret those scripts need. Handing this to a colleague means sharing credentials in chat. Full-blown tools (Rundeck, AWX, Semaphore) bring a database, users and a server to maintain, which is too heavy for a small team or a lab.
 
-Rétrocompatible : un `config.yaml` v1/v2 (sans `projects:`, avec
-`nodes`/`applications` au premier niveau) se charge comme **un projet
-unique** nommé d'après `platform.name`.
+cloud-ictneo2 sits in between:
 
-```yaml
-platform: { name: "Mon workspace" }
-projects:
-  - name: dc-paris
-    nodes: [ ... ]
-    applications: [ ... ]
-  - name: dc-lyon
-    nodes: [ ... ]
-    applications: [ ... ]
-secrets: { ... }   # partagés entre projets, une seule clé age
+- **one portable `config.yaml`** describes nodes, applications (commands + input fields + health checks) and **secrets encrypted with age**, so it is safe to commit;
+- **one age key** decrypts them, in RAM only, per request;
+- **one stateless Go binary** serves the UI and the API, keeps nothing on disk, and streams command output live.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Browser["Browser tab (Angular 20)"]
+        UI["Board / Applications / Topology / Configuration"]
+        MEM["config.yaml + age key<br/>in memory only<br/>(refresh = wiped)"]
+        UI --- MEM
+    end
+
+    subgraph Backend["Go binary (127.0.0.1:9876)"]
+        API["JSON API + SSE"]
+        AGE["age decrypt<br/>(in RAM, per request)"]
+        SSH["SSH client"]
+        API --> AGE --> SSH
+    end
+
+    MEM -->|"each call carries config + key<br/>/api/validate · /api/secrets · /api/check · /api/run"| API
+    API -->|"live output (Server-Sent Events)"| UI
+    SSH -->|"secrets injected as env vars<br/>(never argv, never logged)"| N1["Node A<br/>shell / Ansible"]
+    SSH --> N2["Node B<br/>Terraform"]
+    API -->|"heartbeat: tcp or command"| N1
+    API --> N2
+
+    GIT[("Git repo<br/>config.yaml<br/>(secrets = age ciphertext)")] -.import / export.-> MEM
 ```
 
-## Écrans
+## Features
 
-1. **Board** (accueil, inspiré de homarr) — une **tuile par application**
-   dans une grille. Chaque tuile : icône, node, état heartbeat, bouton
-   ▶ run. **Glissez-déposez** pour réordonner, **poignée en bas à droite**
-   pour **redimensionner** (span de colonnes/lignes). **Icône** (emoji) et
-   **couleur** par tuile se règlent dans l'écran Applications. Tout est
-   sauvegardé dans le `config.yaml` (bloc `tile: { x, y, w, h, icon, color }`,
-   versionnable) — `x/y` ne sont posés qu'au drag, `icon/color` sans épingler
-   la position. À la différence de homarr, une tuile lance une **commande**
-   (pas un lien URL).
-2. **Applications** — CRUD applications, champs de saisie (text/secret),
-   nœuds et secrets (chiffrement à la volée). **Toggle Formulaire ↔ Code** :
-   le formulaire est la vue par défaut (pas de YAML à taper) ; le bouton
-   « </> Code » ouvre le YAML brut, synchronisé dans les deux sens
-   (« Appliquer » revalide et met à jour le formulaire).
-3. **Topologie** — carte SVG en **lecture seule** : quelle application
-   tourne sur quel node, et quels secrets sont utilisés (état
-   activé/désactivé, chiffré/clair).
-4. **Configuration** — importer/coller `config.yaml` + clé age, exporter.
+- **Stateless by design**: no DB, no session store. Every API call carries its own config and key.
+- **age / SOPS-style secrets**: `secret` fields are encrypted server-side with your age recipient. They are decrypted only in RAM at run time and injected as **environment variables**, so they never appear in `argv` or `ps aux` and are never logged.
+- **Tile board** inspired by homarr: one tile per application, drag-and-drop ordering, resizable tiles, per-tile emoji icon and colour (persisted back into the YAML `tile:` block), **one-click run** with input prompts and **live SSE output**.
+- **Health checks** per app: `tcp` reachability or a custom `command` (`systemctl is-active …`), configurable period, on/off.
+- **Multi-project** workspaces with a header project switcher and shared secrets. Older single-project files are still accepted.
+- **Form ⇄ code editor**: edit apps/nodes/secrets through forms, or switch to raw YAML with two-way sync and validation.
+- **Read-only topology map** (SVG): which app runs on which node and which secrets it uses.
+- **White-label**: displayed platform name comes from `platform.name`.
+- **Hardened container**: multi-stage build, non-root user, bound to localhost by default.
 
-Le board absorbe l'ancien Dashboard : heartbeat, run avec saisie des
-champs et **sortie live** (SSE) se font depuis les tuiles.
-
-## Démarrer (Docker, recommandé)
+## Quickstart
 
 ```bash
-docker compose up --build      # UI + API sur http://127.0.0.1:9876
+git clone https://github.com/GhislainAdon/cloud-ictneo2.git && cd cloud-ictneo2
+docker compose up --build            # UI + API on http://127.0.0.1:9876
+
+# 30-second demo: throwaway age key + pre-encrypted config
+./examples/encrypt-demo.sh           # writes examples/config.encrypted.yaml, prints AGE-SECRET-KEY-...
 ```
 
-Puis ouvrez `http://127.0.0.1:9876`, importez `examples/config.yaml` et
-une clé age (`examples/gen-demo.sh` en génère une).
+Open http://127.0.0.1:9876 → **Configuration** → load `examples/config.encrypted.yaml` and paste the printed demo key → go to **Board**.
 
-## Utilisation pas à pas
-
-Exemple concret : lancer `terraform apply` sur un node en passant un mot de
-passe comme champ **secret** (chiffré), et une région comme champ **texte**.
-
-**1. Générer une clé age** (une fois) :
-
-```bash
-docker run --rm alpine sh -c 'apk add -q age && age-keygen'
-# -> copiez la ligne AGE-SECRET-KEY-... (clé privée)
-```
-
-**2. Démarrer la console** : `docker compose up --build`, puis ouvrez
-`http://127.0.0.1:9876`.
-
-**3. Écran Configuration** : collez un `config.yaml` de départ (ou importez
-`examples/config.yaml`) et collez la clé age dans le champ « Clé age ».
-Le bandeau affiche alors le nom de votre plateforme (`platform.name`).
+Minimal `config.yaml`:
 
 ```yaml
-platform:
-  name: "Mon Datacenter"
+platform: { name: "My Datacenter" }
 nodes:
-  - name: node-01
-    host: 10.0.0.5
-    user: admin
-    auth: { type: key, secretRef: ssh_key }
+  - { name: node-01, host: 10.0.0.5, user: admin, auth: { type: key, secretRef: ssh_key } }
 applications:
   - name: terraform-apply
     node: node-01
     workdir: /opt/infra
     command: "terraform apply -auto-approve"
     fields:
-      - { env: TF_VAR_password, label: "Mot de passe", type: secret, secretRef: tf_pass }
-      - { env: TF_VAR_region,   label: "Région",       type: text,   default: eu-west-1 }
+      - { env: TF_VAR_password, label: "Password", type: secret, secretRef: tf_pass }
+      - { env: TF_VAR_region,   label: "Region",   type: text,   default: eu-west-1 }
     check: { enabled: true, type: tcp, periodSeconds: 30 }
-    enabled: true
 secrets:
-  ssh_key: PLAINTEXT   # sera chiffré à l'étape 4
-  tf_pass: PLAINTEXT
+  ssh_key: "-----BEGIN AGE ENCRYPTED FILE-----..."   # encrypted from the UI
+  tf_pass: "-----BEGIN AGE ENCRYPTED FILE-----..."
 ```
 
-Chaque champ `secret` référence une entrée de `secrets:` via `secretRef` ;
-chaque champ est injecté dans la commande comme **variable
-d'environnement** (`TF_VAR_password`, `TF_VAR_region`), jamais en argv.
+### API
 
-**4. Écran Applications ▸ Secrets** : saisissez le nom (`tf_pass`) et la
-valeur en clair, cliquez **🔒 Chiffrer**. La valeur devient un blob
-age-armored dans `secrets:` (marquée « chiffré »). Faites de même pour
-`ssh_key` (collez votre clé privée SSH). Vous pouvez aussi ajouter /
-supprimer / éditer applications, nodes et champs depuis cet écran.
-
-**5. Écran Configuration ▸ Exporter** : téléchargez le `config.yaml`
-modifié (secrets chiffrés inclus). Vos **3 fichiers portables** :
-
-| Fichier | Contenu | Versionnable ? |
-|---|---|---|
-| `config.yaml` | apps + nodes + secrets chiffrés | Oui (secrets chiffrés) |
-| clé age | déchiffre les secrets | **Non** — jamais commitée |
-| `config.yaml` exporté | l'état après édition | idem |
-
-**6. Écran Dashboard** : chaque app affiche son état / heartbeat
-(activable). Cliquez **↻ Vérifier** (ou cochez `auto`) pour lancer les
-checks. Cliquez **▶ Run** → saisissez les champs `text` (les `secret`
-sont déjà résolus) → la sortie de la commande s'affiche **en direct**.
-
-## Référence API (backend Go, stateless)
-
-Chaque appel transporte sa propre config + clé age ; rien n'est stocké.
-
-| Endpoint | Rôle |
+| Endpoint | Purpose |
 |---|---|
 | `GET /api/health` | Liveness |
-| `POST /api/validate` | Parse + valide un `config.yaml`, renvoie l'objet config |
-| `POST /api/secrets` | Chiffre une valeur avec la clé age → blob armored |
-| `POST /api/check` | Heartbeat `tcp`/`command` par app |
-| `POST /api/run` | Déchiffre en RAM, SSH, secrets en env, **stream SSE** de la sortie |
+| `POST /api/validate` | Parse + validate a `config.yaml` |
+| `POST /api/secrets` | Encrypt a value for the loaded age key → armored blob |
+| `POST /api/check` | Heartbeat (`tcp` / `command`) per app |
+| `POST /api/run` | Decrypt in RAM, SSH, inject secrets as env, **stream output over SSE** |
 
-## Développement
-
-Tout se fait en conteneurs — rien à installer sur le poste.
+### Development
 
 ```bash
-# Backend : tests + build
-docker run --rm -v "$PWD/backend:/src" -w /src golang:1.24 \
-  sh -c "go test ./... && go build ./..."
-
-# Frontend : dev server (proxy /api vers :9876)
-docker run --rm -it -v "$PWD/frontend:/app" -w /app -p 4200:4200 node:22 \
-  sh -c "npm install && npx ng serve --host 0.0.0.0 --proxy-config proxy.conf.json"
+# Backend
+cd backend && go test ./... && go run ./cmd/launcher --listen 127.0.0.1:9876 --static ""   # API only
+# Frontend (proxies /api to :9876)
+cd frontend && npm ci && npx ng serve --proxy-config proxy.conf.json
 ```
 
-## Schéma du `config.yaml`
+No local toolchain? The French docs show the same commands run through `golang` and `node` containers.
 
-Voir [examples/config.yaml](examples/config.yaml) (secrets en clair, à
-chiffrer dans l'UI) et [examples/config.encrypted.yaml](examples/config.encrypted.yaml)
-(même config, secrets déjà chiffrés en blobs age-armored — la forme réelle).
+## Screenshots
 
-Sections : `platform` (nom affiché), `nodes` (host/port/user/auth par
-`secretRef`), `applications` (command, `fields[]` text|secret, `check`),
-`secrets` (valeurs age-armored).
+> _Placeholders, to be added (see [docs/screenshots](docs/screenshots/))._
 
-Pour une démo prête à charger (clé + config chiffrée générées localement) :
+| Board | Applications (form ⇄ code) | Topology | Live run output |
+|---|---|---|---|
+| `docs/screenshots/board.png` | `docs/screenshots/apps.png` | `docs/screenshots/topology.png` | `docs/screenshots/run-output.png` |
 
-```bash
-./examples/encrypt-demo.sh
-# -> écrit examples/config.encrypted.yaml + imprime la clé AGE-SECRET-KEY-...
-# Chargez les deux dans l'écran Configuration.
-```
+## Tech stack
 
-## Dépannage
+- **Backend**: Go 1.26, `filippo.io/age`, `golang.org/x/crypto/ssh`, `gopkg.in/yaml.v3`, standard-library HTTP + Server-Sent Events
+- **Frontend**: Angular 20 (standalone components, signals), TypeScript
+- **Packaging**: multi-stage Dockerfile (node → go → alpine, non-root), docker compose
+- **CI**: GitHub Actions with gofmt, `go vet`, `go test -race`, golangci-lint, Angular production build, Docker build and a Trivy image scan
 
-| Symptôme | Cause probable | Solution |
-|---|---|---|
-| Bouton **🔒 Chiffrer** grisé | Pas de clé age chargée, ou nom de secret vide | Chargez la clé (écran Configuration) et saisissez un nom |
-| Écran Applications/Dashboard vide | Config non chargée ou invalide | Chargez un `config.yaml` ; les erreurs de validation s'affichent sur l'écran Configuration |
-| App en état **down** | Node injoignable (`i/o timeout`) ou check qui échoue | Vérifiez `host`/`port`, le pare-feu, ou la commande `check.run` |
-| Run : **`bad private key: ssh: no key found`** | Le secret `ssh_key` n'est pas une vraie clé privée (ex. `PLAINTEXT`) | Mettez la vraie clé privée SSH dans le secret référencé par `auth.secretRef` |
-| Run : **`decrypt failed (wrong age key…)`** | La clé age chargée ne correspond pas aux secrets chiffrés | Chargez la clé age qui a servi à chiffrer ce `config.yaml` |
-| Secrets **« clair (non chiffré) »** | Valeurs jamais chiffrées (ex. importées en clair) | Re-saisissez-les via Applications ▸ Secrets ▸ Chiffrer |
+## Security model
 
-## Sécurité — à lire
+- **No authentication by design** (local operator tool). The server binds to `127.0.0.1` and the compose file publishes on localhost only. Put an authenticating reverse proxy in front before any network exposure.
+- The age key is **never written** to disk or `localStorage`.
+- Secrets are never logged and never passed on the command line.
+- SSH host keys are not pinned (operator-declared nodes). This is a known limitation, listed on the roadmap.
 
-- **Aucune authentification** : positionnement dashboard local, comme la
-  console d'origine. Le backend bind `127.0.0.1` par défaut — **ne pas
-  exposer** sans proxy d'auth devant.
-- La **clé age** n'est jamais écrite sur disque ni en `localStorage` —
-  seulement en mémoire de l'onglet. Un rafraîchissement la supprime.
-- Les secrets ne sont **jamais loggés ni passés en argv**.
-- La clé d'hôte SSH n'est pas épinglée (nœuds déclarés par l'opérateur) —
-  limitation assumée pour un outil local.
+## Roadmap
 
-## Conception
+- [ ] SSH host-key pinning (`known_hosts` per node in the YAML)
+- [ ] Optional OIDC login (reverse-proxy headers or built-in) for shared deployments
+- [ ] Run history export (JSON) and per-run audit trail
+- [ ] Native SOPS file format compatibility (encrypt/decrypt with `sops` CLI interchangeably)
+- [ ] Frontend unit tests in CI (headless Chrome) and Playwright end-to-end smoke test
+- [ ] Signed multi-arch images published to GHCR
 
-Spec validée : [docs/specs/2026-07-03-launcher-design.md](docs/specs/2026-07-03-launcher-design.md).
-Plan : [docs/plans/2026-07-03-launcher-implementation.md](docs/plans/2026-07-03-launcher-implementation.md).
+## Design docs
+
+- Spec: [docs/specs/2026-07-03-launcher-design.md](docs/specs/2026-07-03-launcher-design.md)
+- Implementation plan: [docs/plans/2026-07-03-launcher-implementation.md](docs/plans/2026-07-03-launcher-implementation.md)
+
+---
+
+## Résumé en français
+
+**cloud-ictneo2** est une console web **sans état**, en marque blanche, pour déclarer et lancer des scripts **shell / Ansible / Terraform** sur des nœuds distants via SSH. Tout l'état tient dans un `config.yaml` versionnable, dont les secrets sont **chiffrés avec age**. La clé age reste uniquement en mémoire de l'onglet. Le backend Go déchiffre les secrets en RAM et les injecte en **variables d'environnement**, jamais dans argv. La sortie des commandes est diffusée en direct (SSE). L'interface Angular propose un board de tuiles façon homarr, un éditeur formulaire ⇄ YAML, une carte de topologie et le multi-projet. Documentation détaillée : [docs/README.fr.md](docs/README.fr.md).
+
+## License
+
+[MIT](LICENSE) © Ghislain Adon
