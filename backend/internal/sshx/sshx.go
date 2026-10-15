@@ -67,13 +67,13 @@ func Run(n Node, workdir, command string, env map[string]string, onLine func(str
 	if err != nil {
 		return -1, fmt.Errorf("ssh dial %s: %w", n.addr(), err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	sess, err := client.NewSession()
 	if err != nil {
 		return -1, err
 	}
-	defer sess.Close()
+	defer func() { _ = sess.Close() }()
 
 	// Prefix env exports rather than SetEnv, which most sshd configs
 	// reject (AcceptEnv allowlist). This keeps secrets out of argv.

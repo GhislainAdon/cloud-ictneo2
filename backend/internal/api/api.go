@@ -218,7 +218,7 @@ func run(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 
 	send := func(event, data string) {
-		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, jsonString(data))
+		_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, jsonString(data))
 		flusher.Flush()
 	}
 	send("start", app.Name)
